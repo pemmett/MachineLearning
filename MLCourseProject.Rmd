@@ -1,0 +1,91 @@
+---
+title: " Machine Learning Course Assignment"
+author: "Paul Emmett"
+date: "January 24, 2015"
+output: html_document
+---
+
+First we will load the required libraries
+```{r load required libraries}
+#setwd("~/Documents/Coursera/Machine Learning")
+require(Hmisc)
+require(caret)
+require(ggplot2)
+library(rattle)
+library(rpart)
+library(randomForest)
+```
+Load training and test data
+
+```{r data load}
+trainUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testUrl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+training <- read.csv(url(trainUrl), na.strings=c("NA","#DIV/0!",""))
+testing <- read.csv(url(testUrl), na.strings=c("NA","#DIV/0!",""))
+```
+Preprocessing begins next
+```{r data clean NAs}
+training_nas <- training[,(colSums(is.na(training)) == 0)]
+testing_nas <- testing[,(colSums(is.na(testing)) == 0)]
+```
+Remove zero variance.
+```{r data clean Zvars}
+zvar <- nearZeroVar(training_nas,saveMetrics=TRUE)
+trainingNZ<- training_nas[,!zvar$nzv]
+testingNZ <- testing_nas[,!zvar$nzv]
+```
+```{r data clean columns}
+#metaData_train <- c("user_name","raw_timestamp_part_1","raw_timestamp_part_2","cvtd_timestamp","num_window","problem_id")
+training_clean <- trainingNZ[, c(7:59)]
+testing_clean <- testingNZ[, c(7:59)]
+dim(training_clean)
+dim(testing_clean)
+
+```
+#Cross-validation
+The next section partitions the training data into a training subset and a validation subset which is named Testing_A, not to be confused with the downloaded testing dataset of 20 observations used to generate the test files at the end.
+The Random Forest method has its own internal cross-validation algorithms which protect against overfitting.
+```{r Partition Data into test and validation}
+inTrain <- createDataPartition(y=training$classe, p=0.6, list=FALSE)
+training_A <- training_clean[inTrain, ]
+testing_A <- training_clean[-inTrain, ]
+dim(training_A)
+dim(testing_A)
+```
+#Model Building
+The next section builds the random forest model and then uses it to predict the "classe" variable in the validation partition.
+It is then used to generate a confusion matrix which will provide measures of uncertainty
+
+```{r train model}
+
+RFmodFit <- randomForest(classe ~. , data=training_A, importance=TRUE)
+
+#Predicting:
+
+predictionsRF1 <- predict(RFmodFit, testing_A, type = "class")
+
+#The acid test:  Generating a confusion matrix
+confusionMatrix(predictionsRF1, testing_A$classe)
+```
+# The Out of Sample test file is applied to the model
+The RandomForest model constructed above is now applied to the final test data set
+The results are plotted.
+```{r predict Out of Sample}
+predictionsRF2<-predict(RFmodFit,testing_clean)
+```{r Model Plots}
+
+plot(RFmodFit, log="y")
+varImpPlot(RFmodFit, main="Importance of Variables")
+
+```
+
+```{r write predictions for submission}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(predictionsRF2)
+
